@@ -1,0 +1,85 @@
+name: Discover Brands (manual)
+
+# Run the brand-discovery agent from GitHub Actions and upload the CSV/JSON
+# output as a build artifact. Trigger it from the Actions tab -> "Run workflow".
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Meta Ad Library search URL"
+        required: true
+        default: "https://web.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&is_targeted_country=false&media_type=all&q=women%20fashion&search_type=keyword_unordered&sort_data[mode]=total_impressions&sort_data[direction]=desc"
+      target_brands:
+        description: "Target number of brands (10-100)"
+        required: false
+        default: "50"
+      pages:
+        description: "Pages / scroll loads (20-80)"
+        required: false
+        default: "40"
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install --prefer-binary --only-binary=:all: greenlet==3.0.3 || pip install greenlet==3.0.3
+          pip install --prefer-binary -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Run discovery
+        env:
+          INPUT_URL: ${{ github.event.inputs.url }}
+          INPUT_TARGET: ${{ github.event.inputs.target_brands }}
+          INPUT_PAGES: ${{ github.event.inputs.pages }}
+        run: |
+          python - <<'PY'
+          import csv, json, sys
+          import scraper, discovery
+
+          url = __import__("os").environ["INPUT_URL"]
+          target = int(__import__("os").environ.get("INPUT_TARGET", "50") or 50)
+          pages = int(__import__("os").environ.get("INPUT_PAGES", "40") or 40)
+          print(f"[workflow] url={url}\n[workflow] target={target} pages={pages}", flush=True)
+
+          raw = scraper.scrape_ads_library(url, pages=pages, log=lambda m: print(m, flush=True))
+          print(f"[workflow] scraped {len(raw)} raw ads", flush=True)
+
+          brands = discovery.discover_brands(
+              raw, target=target, original_url=url,
+              log=lambda m: print(m, flush=True),
+              pages=pages, scraper_fn=scraper.scrape_ads_library,
+          )
+
+          cols = ["brand_name","website","emails","country","category","active_ads_count",
+                  "activity_level","instagram_handle","instagram_followers","platform",
+                  "dtc_score","smb_score","total_score"]
+          with open("brands.csv", "w", newline="", encoding="utf-8") as fh:
+              w = csv.writer(fh); w.writerow(cols)
+              for b in brands:
+                  w.writerow([b.get(c,"") for c in cols])
+          with open("brands.json", "w", encoding="utf-8") as fh:
+              json.dump(brands, fh, indent=2)
+          print(f"[workflow] wrote {len(brands)} brands -> brands.csv / brands.json", flush=True)
+          PY
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: brands-${{ github.run_id }}
+          path: |
+            brands.csv
+            brands.json
+          if-no-files-found: error
+          retention-days: 14
