@@ -1,0 +1,17 @@
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+.env
+.DS_Store
+*.log
+# Generated job outputs are ephemeral – keep the folder via .gitkeep
+static/outputs/*
+!static/outputs/.gitkeep
+# Playwright / test artefacts
+test-results/
+playwright-report/

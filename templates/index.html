@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FB Ads Leads Scraper — DTC Brand Discovery</title>
+  <meta name="description" content="Find DTC brands actively running Meta ads. Paste an Ad Library link, filter agencies/resellers/dropshippers, enrich with emails & IG followers, export a sorted table." />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html { scroll-behavior: smooth; }
+    .terminal { font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, monospace; }
+    ::-webkit-scrollbar { height: 8px; width: 8px; }
+    ::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    .grad { background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%); }
+    .glow { box-shadow: 0 0 0 1px rgba(99,102,241,.25), 0 10px 40px -10px rgba(99,102,241,.45); }
+    input[type=range]{accent-color:#6366f1;}
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 antialiased min-h-screen">
+
+  <!-- HEADER -->
+  <header class="grad border-b border-white/10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      <div class="flex items-center gap-3">
+        <div class="h-11 w-11 rounded-xl bg-indigo-500/20 ring-1 ring-indigo-400/40 flex items-center justify-center text-2xl">🎯</div>
+        <div>
+          <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">FB Ads Leads Scraper</h1>
+          <p class="text-indigo-200/80 text-sm">DTC Brand Discovery Agent — find brands actively running Meta ads</p>
+        </div>
+      </div>
+
+      <!-- INPUT CARD -->
+      <div class="mt-6 bg-slate-900/70 backdrop-blur rounded-2xl border border-white/10 p-5 sm:p-6 glow">
+        <label class="block text-sm font-medium text-slate-300 mb-2">Meta Ad Library URL</label>
+        <textarea id="url" rows="3"
+          class="w-full rounded-xl bg-slate-950/80 border border-white/10 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30 outline-none px-4 py-3 text-sm text-slate-100 placeholder-slate-500 resize-none"
+          placeholder="Paste a Facebook Ad Library search link...">https://web.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&is_targeted_country=false&media_type=all&q=women%20fashion&search_type=keyword_unordered&sort_data[mode]=total_impressions&sort_data[direction]=desc</textarea>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-5">
+          <div>
+            <div class="flex items-center justify-between text-sm mb-1">
+              <span class="text-slate-300 font-medium">Target brands</span>
+              <span id="targetVal" class="text-indigo-300 font-semibold">50</span>
+            </div>
+            <input id="target" type="range" min="10" max="100" step="5" value="50" class="w-full" />
+          </div>
+          <div>
+            <div class="flex items-center justify-between text-sm mb-1">
+              <span class="text-slate-300 font-medium">Pages / scroll loads</span>
+              <span id="pagesVal" class="text-indigo-300 font-semibold">40</span>
+            </div>
+            <input id="pages" type="range" min="20" max="80" step="5" value="40" class="w-full" />
+          </div>
+        </div>
+
+        <div class="mt-6 flex flex-wrap gap-3 items-center">
+          <button id="discoverBtn"
+            class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition px-6 py-3 rounded-xl font-semibold text-white shadow-lg shadow-indigo-900/40">
+            <span id="btnSpinner" class="hidden h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>
+            <span id="btnText">🚀 Discover Brands</span>
+          </button>
+          <span id="jobStatus" class="text-sm text-slate-400"></span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+
+    <!-- LIVE LOG -->
+    <section>
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">Live log</h2>
+        <span id="logCount" class="text-xs text-slate-500"></span>
+      </div>
+      <div id="terminal"
+        class="terminal h-56 sm:h-64 overflow-auto rounded-xl border border-emerald-900/40 bg-black p-4 text-xs sm:text-[13px] leading-relaxed text-emerald-400">
+        <span class="text-emerald-600">$ waiting for discovery to start…</span>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section id="resultsSection" class="hidden">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h2 class="text-lg font-bold">Discovered brands <span id="resultCount" class="text-indigo-400"></span></h2>
+        <div class="flex flex-wrap gap-2">
+          <select id="countryFilter" class="text-sm bg-slate-900 border border-white/10 rounded-lg px-3 py-2 outline-none focus:border-indigo-400">
+            <option value="">All countries</option>
+          </select>
+          <select id="categoryFilter" class="text-sm bg-slate-900 border border-white/10 rounded-lg px-3 py-2 outline-none focus:border-indigo-400">
+            <option value="">All categories</option>
+          </select>
+          <button onclick="exportCSV()" class="text-sm bg-slate-800 hover:bg-slate-700 border border-white/10 rounded-lg px-3 py-2">⬇ CSV</button>
+          <button onclick="exportExcel()" class="text-sm bg-slate-800 hover:bg-slate-700 border border-white/10 rounded-lg px-3 py-2">⬇ Excel</button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto rounded-xl border border-white/10">
+        <table class="min-w-full text-sm">
+          <thead class="bg-slate-900/80 text-slate-400 uppercase text-xs">
+            <tr>
+              <th class="text-left px-4 py-3 whitespace-nowrap">Brand</th>
+              <th class="text-left px-4 py-3 whitespace-nowrap">Website</th>
+              <th class="text-left px-4 py-3 whitespace-nowrap">Emails</th>
+              <th class="text-left px-4 py-3 whitespace-nowrap">Country</th>
+              <th class="text-left px-4 py-3 whitespace-nowrap">Category</th>
+              <th class="text-center px-4 py-3 whitespace-nowrap">Ads</th>
+              <th class="text-center px-4 py-3 whitespace-nowrap">Activity</th>
+              <th class="text-right px-4 py-3 whitespace-nowrap">IG Followers</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody" class="divide-y divide-white/5"></tbody>
+        </table>
+      </div>
+      <p id="noResults" class="hidden text-center text-slate-500 py-10">No brands matched the current filter.</p>
+    </section>
+  </main>
+
+  <footer class="border-t border-white/10 py-6 text-center text-xs text-slate-500">
+    FB Ads Leads Scraper · DTC Brand Discovery · Built for Render (Python env)
+  </footer>
+
+<script>
+const DEFAULT_URL = document.getElementById('url').value;
+let currentJobId = null;
+let pollTimer = null;
+let lastLogLen = 0;
+let allBrands = [];
+
+const $ = (id) => document.getElementById(id);
+
+$('target').addEventListener('input', e => $('targetVal').textContent = e.target.value);
+$('pages').addEventListener('input', e => $('pagesVal').textContent = e.target.value);
+
+function setStatus(msg, cls='text-slate-400') {
+  const el = $('jobStatus');
+  el.textContent = msg;
+  el.className = 'text-sm ' + cls;
+}
+
+function appendLog(line) {
+  const term = $('terminal');
+  // keep the "waiting" placeholder clean
+  if (term.children.length === 1 && term.children[0].textContent.includes('waiting')) {
+    term.innerHTML = '';
+  }
+  const div = document.createElement('div');
+  div.textContent = line;
+  div.className = 'whitespace-pre-wrap break-words';
+  term.appendChild(div);
+  term.scrollTop = term.scrollHeight;
+}
+
+function setLoading(loading) {
+  $('discoverBtn').disabled = loading;
+  $('btnSpinner').classList.toggle('hidden', !loading);
+  $('btnText').textContent = loading ? 'Discovering…' : '🚀 Discover Brands';
+}
+
+async function startDiscovery() {
+  const url = $('url').value.trim();
+  if (!url) { alert('Please paste a Meta Ad Library URL.'); return; }
+  const target = parseInt($('target').value, 10);
+  const pages = parseInt($('pages').value, 10);
+
+  $('terminal').innerHTML = '';
+  lastLogLen = 0;
+  allBrands = [];
+  $('resultsSection').classList.add('hidden');
+  $('resultsBody').innerHTML = '';
+
+  setLoading(true);
+  setStatus('Starting job…');
+
+  try {
+    const resp = await fetch('/api/discover', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ url, target_brands: target, pages })
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to start job');
+    }
+    const data = await resp.json();
+    currentJobId = data.job_id;
+    setStatus(`Job ${currentJobId} queued…`);
+    pollJob();
+  } catch (e) {
+    setLoading(false);
+    setStatus('Error: ' + e.message, 'text-red-400');
+    appendLog('[error] ' + e.message);
+  }
+}
+
+function pollJob() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    if (!currentJobId) return;
+    try {
+      const resp = await fetch(`/api/job/${currentJobId}`);
+      const job = await resp.json();
+      // new logs
+      if (job.logs && job.logs.length > lastLogLen) {
+        for (let i = lastLogLen; i < job.logs.length; i++) appendLog(job.logs[i]);
+        lastLogLen = job.logs.length;
+        $('logCount').textContent = `${job.logs.length} lines`;
+      }
+      if (job.status === 'completed') {
+        clearInterval(pollTimer); pollTimer = null;
+        setLoading(false);
+        allBrands = job.brands || [];
+        renderResults(allBrands);
+        setStatus(`Done — ${allBrands.length} brands`, 'text-emerald-400');
+      } else if (job.status === 'failed') {
+        clearInterval(pollTimer); pollTimer = null;
+        setLoading(false);
+        setStatus('Job failed', 'text-red-400');
+        appendLog('[error] ' + (job.error || 'unknown error'));
+      } else {
+        setStatus(`Running… ${job.logs.length} log lines`, 'text-indigo-300');
+      }
+    } catch (e) {
+      // network blip — keep polling
+    }
+  }, 1500);
+}
+
+function activityBadge(level) {
+  const map = {
+    High:   'bg-emerald-500/20 text-emerald-300 ring-emerald-400/30',
+    Medium: 'bg-amber-500/20 text-amber-300 ring-amber-400/30',
+    Low:    'bg-slate-500/20 text-slate-300 ring-slate-400/20'
+  };
+  const cls = map[level] || map.Low;
+  return `<span class="px-2 py-0.5 rounded-full text-xs font-semibold ring-1 ${cls}">${level}</span>`;
+}
+
+function renderResults(brands) {
+  $('resultsSection').classList.remove('hidden');
+  $('resultCount').textContent = `(${brands.length})`;
+
+  // populate filters
+  const countries = [...new Set(brands.map(b => b.country).filter(Boolean))].sort();
+  const categories = [...new Set(brands.map(b => b.category).filter(Boolean))].sort();
+  const cf = $('countryFilter'), kf = $('categoryFilter');
+  cf.innerHTML = '<option value="">All countries</option>' + countries.map(c => `<option>${c}</option>`).join('');
+  kf.innerHTML = '<option value="">All categories</option>' + categories.map(c => `<option>${c}</option>`).join('');
+  cf.onchange = applyFilters; kf.onchange = applyFilters;
+
+  applyFilters();
+  $('resultsSection').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function applyFilters() {
+  const country = $('countryFilter').value;
+  const category = $('categoryFilter').value;
+  const filtered = allBrands.filter(b =>
+    (!country || b.country === country) && (!category || b.category === category));
+  const body = $('resultsBody');
+  if (!filtered.length) {
+    body.innerHTML = '';
+    $('noResults').classList.remove('hidden');
+    return;
+  }
+  $('noResults').classList.add('hidden');
+  body.innerHTML = filtered.map(b => {
+    const site = b.website || '—';
+    const siteLink = b.website_url && b.website_url.startsWith('http')
+      ? `<a href="${b.website_url}" target="_blank" rel="noopener" class="text-indigo-300 hover:underline break-all">${site}</a>`
+      : `<span class="text-slate-500">${site}</span>`;
+    const ig = b.instagram_handle
+      ? `<a href="https://instagram.com/${b.instagram_handle}" target="_blank" rel="noopener" class="text-pink-300 hover:underline">@${b.instagram_handle}</a>`
+      : `<span class="text-slate-600">—</span>`;
+    return `
+      <tr class="hover:bg-white/5">
+        <td class="px-4 py-3 font-medium text-slate-100">${escapeHtml(b.brand_name)}</td>
+        <td class="px-4 py-3">${siteLink}</td>
+        <td class="px-4 py-3 text-slate-400">${escapeHtml(b.emails || '—')}</td>
+        <td class="px-4 py-3">${escapeHtml(b.country || '—')}</td>
+        <td class="px-4 py-3"><span class="text-slate-300">${escapeHtml(b.category)}</span></td>
+        <td class="px-4 py-3 text-center font-semibold">${b.active_ads_count}</td>
+        <td class="px-4 py-3 text-center">${activityBadge(b.activity_level)}</td>
+        <td class="px-4 py-3 text-right text-slate-300">${b.instagram_followers_display}${b.instagram_handle ? '<br>'+ig : ''}</td>
+      </tr>`;
+  }).join('');
+}
+
+function escapeHtml(s) {
+  return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+function exportCSV() {
+  if (!currentJobId) { alert('Run a discovery first.'); return; }
+  window.location.href = `/api/download/${currentJobId}/brands.csv`;
+}
+function exportExcel() {
+  if (!currentJobId) { alert('Run a discovery first.'); return; }
+  window.location.href = `/api/download/${currentJobId}/brands.xlsx`;
+}
+
+$('discoverBtn').addEventListener('click', startDiscovery);
+</script>
+</body>
+</html>
