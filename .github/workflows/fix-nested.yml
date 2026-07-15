@@ -1,0 +1,65 @@
+name: Fix nested files (auto-root)
+
+# If someone pushes the project inside a sub-folder (e.g. fb-ads-leads-scraper/app.py)
+# this workflow moves everything up to the repo root and pushes back to main so
+# Render (and the flat-structure contract) keeps working.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  flatten:
+    runs-on: ubuntu-latest
+    # Only run if a top-level app.py is NOT present (i.e. files are nested).
+    if: ${{ github.repository_owner != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect & fix nesting
+        run: |
+          set -e
+          if [ -f "app.py" ]; then
+            echo "✓ app.py already at repo root — nothing to do."
+            exit 0
+          fi
+
+          echo "app.py not at root — searching for nested project folder…"
+          NESTED=$(find . -maxdepth 2 -type f -name app.py -not -path "*/node_modules/*" | head -n1)
+          if [ -z "$NESTED" ]; then
+            echo "No app.py found anywhere — nothing to flatten."
+            exit 0
+          fi
+
+          SUBDIR=$(dirname "$NESTED")
+          echo "Found project in: $SUBDIR"
+          # Move every file/folder from the sub-directory up to the repo root.
+          git mv "$SUBDIR"/* . 2>/dev/null || true
+          # Move hidden files (e.g. .github, .gitignore) too
+          shopt -s dotglob
+          for f in "$SUBDIR"/*; do
+            [ -e "$f" ] || continue
+            name=$(basename "$f")
+            if [ -e "./$name" ]; then continue; fi
+            git mv "$f" "./$name" 2>/dev/null || mv "$f" "./$name"
+          done
+          shopt -u dotglob
+
+          # Remove now-empty subdir if any
+          rmdir "$SUBDIR" 2>/dev/null || true
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes after flattening."
+          else
+            git commit -m "chore: flatten nested project files to repo root"
+            git push
+            echo "✓ Pushed flattened layout."
+          fi
