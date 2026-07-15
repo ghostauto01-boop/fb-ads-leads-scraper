@@ -572,48 +572,10 @@ def finalize(brands: Dict[str, dict], target: int, log: LogFn) -> List[dict]:
 # ---------------------------------------------------------------------------
 # Top-level entry point
 # ---------------------------------------------------------------------------
-def discover_brands(raw_ads: List[dict], target: int = 50,
-                    original_url: str = "", log: LogFn = None,
-                    pages: int = 40,
-                    scraper_fn: Optional[Callable] = None) -> List[dict]:
-    """Discover, enrich, filter, score and sort brands.
-
-    `scraper_fn(url, pages, log)` is optional. When provided and the first
-    pass yields fewer than `target` brands, related keywords are generated
-    from the search `q` param and scraped until the target is met (max 3 extra
-    searches).
-    """
+def discover_brands(raw_ads, target=50, original_url="", log=None, pages=40):
     log = log or _noop
-    brands: Dict[str, dict] = {}
-
-    log("[discovery] === Pass 1: original query ===")
+    brands = {}
+    log("[discovery] Processing the single Ad Library link you provided "
+        "(no related-keyword / competitor expansion).")
     process_ads(raw_ads, brands, original_url, log)
-
-    # Related-keyword expansion
-    if scraper_fn is not None:
-        try:
-            import scraper as _scraper
-            base_query = _scraper.parse_ad_library_url(original_url).get("query", "")
-        except Exception:
-            base_query = ""
-
-        tried = 0
-        while len(brands) < target and tried < 3:
-            related = generate_related_keywords(base_query, limit=3 + tried)
-            if tried >= len(related):
-                break
-            kw = related[tried]
-            tried += 1
-            log(f"[discovery] === Related keyword {tried}: {kw!r} "
-                f"({len(brands)}/{target} so far) ===")
-            try:
-                rel_url = _scraper.build_url_with_query(original_url, kw)
-                rel_ads = scraper_fn(rel_url, pages=pages, log=log)
-            except Exception as e:
-                log(f"[discovery] related-keyword scrape failed: {e}")
-                rel_ads = []
-            if not rel_ads:
-                continue
-            process_ads(rel_ads, brands, original_url, log)
-
     return finalize(brands, target, log)
