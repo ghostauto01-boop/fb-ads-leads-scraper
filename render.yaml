@@ -1,18 +1,22 @@
 services:
   - type: web
     name: fb-ads-leads-scraper
-    runtime: python
-    env: python
+    runtime: python          # Python native environment (NOT Docker) -> fits free tier
     plan: free
     region: oregon
     # IMPORTANT: Python environment (NOT Docker) so the free tier build does not
     # blow the 2GB image / build-time budget.
+    # greenlet is installed with --only-binary first to avoid "Failed building
+    # wheel for greenlet" on the free tier.
     buildCommand: "pip install --upgrade pip setuptools wheel && { pip install --prefer-binary --only-binary=:all: greenlet==3.0.3 || pip install greenlet==3.0.3; } && pip install --prefer-binary -r requirements.txt && python -m playwright install chromium"
     startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 300"
     healthCheckPath: /health
     autoDeploy: true
     envVars:
+      # NOTE: Render only accepts SPECIFIC Python patch versions.
+      # 3.11.0 is NOT supported -> use 3.11.11 (latest supported 3.11.x).
+      # See https://render.com/docs/python-version
       - key: PYTHON_VERSION
-        value: 3.11.0
+        value: 3.11.11
       - key: PYTHONUNBUFFERED
         value: "1"
